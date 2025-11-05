@@ -661,7 +661,7 @@ Result:
    
    ```bash
    !# /bin/bash
-   ls -la | grep express -kubernetes-vc
+   ls -la | grep express-kubernetes-vc
    ```
 
    CLear system perocess:

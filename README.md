@@ -627,7 +627,7 @@ Result:
    eval $(minikube docker-env -u)
    ```
 
-   Stop and deleete DOcker containers and image:
+   Stop and deleete Docker containers and image:
 
    ```bash
    !# /bin/bash
@@ -646,6 +646,9 @@ Result:
 
    Delete project's files:
 
+   ```bash
+   !# /bin/bash
+   
    cd ~/express-kubernetes-vc
 
    cd ..

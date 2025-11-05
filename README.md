@@ -52,7 +52,7 @@ Before running this, install Docker and Kubernetes.
                 app.get('/', (req, res) => {
                   visitCount++;
                   res.json({
-                    message: '🚀 Hello from Docker & Kubernetes!',
+                    message: 'Hello from Docker & Kubernetes!',
                     visitCount: visitCount,
                     timestamp: new Date().toISOString(),
                     containerId: process.env.HOSTNAME || 'local'

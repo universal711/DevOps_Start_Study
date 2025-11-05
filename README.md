@@ -604,6 +604,7 @@ Result:
    kubectl get all
    kubectl get configmaps
    kubectl get secrets
+   ```
 
    Stopped minikube:
 

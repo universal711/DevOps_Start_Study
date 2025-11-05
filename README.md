@@ -8,12 +8,15 @@ Before running this, install Docker and Kubernetes.
 
 2) Create project structure:
    
-   -    mkdir express-kubernetes-vc && cd express-kubernetes-vc
-   -    mkdir app kubernetes scripts
-   -    cd app
+   ```bash
+   #! /bin/bash
+   mkdir express-kubernetes-vc && cd express-kubernetes-vc
+   mkdir app kubernetes scripts
+   cd app
+   ```
 
        Create package.json:
-
+   
             script:
         
                 {

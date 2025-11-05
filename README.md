@@ -563,8 +563,131 @@ Result:
         kubectl get all
     
         kubectl describe deployment visit-counter
-    
+
         kubectl scale deployment visit-counter --replicas=5
     
         kubectl get pods
     ```
+
+
+
+
+
+                                                 CLEAR
+
+1) Delete Kubernetes
+
+   Or all:
+   
+   ```bash
+   #! /bin/bash
+   kubectl delete -f kubernetes/
+   
+   ```
+
+   Or what you need:
+   ```bash
+   !# /bin/bash
+   kubectl delete deployment visit-counter
+   kubectl delete service visit-counter-service
+   kubectl delete configmap visit-counter-config
+   kubectl delete secret visit-counter-secret
+   kubectl delete networkpolicy visit-counter-network-policy
+   kubectl delete hpa visit-counter-hpa
+   kubectl delete serviceaccount visit-counter-sa
+   ```
+
+   And chek:
+
+   ```bash
+   !# /bin/bash
+   kubectl get all
+   kubectl get configmaps
+   kubectl get secrets
+
+   Stopped minikube:
+
+   ```bash
+   !# /bin/bash
+   minikube stop
+   ```
+
+   Full delete cluster:
+
+   ```bash
+   !# bin/bash
+   minikube delete
+   ```
+
+   Exit out Docker environment Minikube:
+
+   ```bash
+   !# /bin/bash
+   eval $(minikube docker-env -u)
+   ```
+
+   Stop and deleete DOcker containers and image:
+
+   ```bash
+   !# /bin/bash
+
+   docker stop my-app
+   docker rm my-app
+
+   docker rmi visit-counter:1.0
+
+   docker images | grep visit-counter
+
+   docker stop $(docker ps -aq) 2>/dev/null || echo "No containers to stop"
+
+   docker rm $(docker ps -aq) 2>/dev/null || echo "No containers to remove"
+   ```
+
+   Delete project's files:
+
+   cd ~/express-kubernetes-vc
+
+   cd ..
+   
+   rm -rf express-kubernetes-vc
+
+   ```
+
+   Chek:
+   
+   ```bash
+   !# /bin/bash
+   ls -la | grep express -kubernetes-vc
+   ```
+
+   CLear system perocess:
+
+   Chek ports:
+   ```bash
+   !# /bin/bash
+   lsof -i :3000
+   lsof -i :8000
+   ```
+
+   If port/ports work:
+   ```bash
+   !# /bin/bash
+   kill -9 <PID>
+   !#replace PID on real
+   ```
+
+
+                                                   FAST CLEAR
+
+```bash
+!# /bin/bash
+
+kubectl delete -f kubernetes/
+minikube stop
+docker stop my-app && docker rm my-app
+docker rmi visit-counter:1.0
+cd .. && rm -rf express-kubernetes-vc
+
+```
+
+   

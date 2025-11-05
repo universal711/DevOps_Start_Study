@@ -17,21 +17,23 @@ Before running this, install Docker and Kubernetes.
 
        Create package.json:
    
-            script:
-        
+            ```bash
+            #! /bin/bash
                 {
                   "name" : "visit-counter",
                   "dependecies": {
                     "express": "^4.18.2"
                     }
                 }
+            ```
         
   
         Create server.js:
-   
-        cat > server.js << 'EOF'
+      ```bash
+      #! /bin/bash
+            
+      cat > server.js << 'EOF'
 
-            script:
                 const express = require('express');
                 const app = express();
                 const PORT = process.env.PORT || 3000;
@@ -93,54 +95,74 @@ Before running this, install Docker and Kubernetes.
                   console.log(`Health check: http://localhost:${PORT}/health`);
                   console.log(`Main endpoint: http://localhost:${PORT}/`);
                 });
-        EOF
+      EOF
+      ```
 
 4) Local test for app:
 
    In the First terminal:
+   
+      ```
+      cd ..
 
-       cd ..
-       node --version (if you received version - good, else go to install)
+      node --version (if you received version - good, else go to install)
     
-       else: node server.js
+      else: node server.js
     
-       npm --version (if you received version - good, else go to install)
+      npm --version (if you received version - good, else go to install)
     
-       else: npm install
+      else: npm install
+
+      ```
 
    In the second terminal:
 
-       cd ~/express-kubernetes-vc
+      ```
+      cd ~/express-kubernetes-vc
+      curl http://localhost:3000/
+      curl http://localhost:3000/health
+      curl http://localhost:3000/stats
+      ```
 
-       curl http://localhost:3000/
-       curl http://localhost:3000/health
-       curl http://localhost:3000/stats
 
-5) Create dockerfile:
+6) Create dockerfile:
+
+   ```bash
+   #! /bin/bash
+            
    cat > Dockerfile << 'EOF'
 
-   script:
-
-       FROM node:18-alpine
+   FROM node:18-alpine
        
-       WORKDIR /app
+   WORKDIR /app
     
-       COPY app/package.json ./
+   COPY app/package.json ./
     
-       RUN npm install
+   RUN npm install
     
-       COPY app/server.js ./
+   COPY app/server.js ./
     
-       EXPOSE 3000
+   EXPOSE 3000
     
-       CMD["node", "server.js"]
+   CMD["node", "server.js"]
 
    EOF
+   ```
 
-6) Check:
+8) Check:
+
+   ```bash
+   #! /bin/bash
+            
    cat Dockerfile
 
+   ```
+   
 7)Build and start in DOCKER:
+
+   ```bash
+   #! /bin/bash
+            
 
     docker build -t visit-counter:1.0 .
     
@@ -155,26 +177,44 @@ Before running this, install Docker and Kubernetes.
     curl http://localhost:3000/
     
     curl http://localhost:3000/health
+   ```
 
 Result:
+
+   ```
     { 
      "message": "Hello from Docker & Kubernetes!", 
      "visitCount": 1,
      "timestamp": "2024-01-15T10:00:00.00Z",
      "containerID": "abc123"
     }
+   ```
 
 8)Stop container:
+
+   ```bash
+   #! /bin/bash
+            
     docker stop my-app
     docker rm my-app
+   ```
 
 9)Work with Kubernetes(minikube):
+
+   ```bash
+   #! /bin/bash
+            
     minikube start
     minikube status
     kubectl get nodes
+   ```
     
 10) Create Kubernetes manifests:
     Deployment manifest:
+
+    ```bash
+    #! /bin/bash
+            
         cat > kubernetes/deployment.yaml << 'EOF'
     
         script:
@@ -217,8 +257,13 @@ Result:
               periodSeconds: 10
 
         EOF
+    ```
     
     Service manifest:
+    
+   ```bash
+   #! /bin/bash
+            
         cat > kubernetes/service.yaml << 'EOF'
 
             script:
@@ -236,17 +281,25 @@ Result:
           type: LoadBalancer
 
         EOF
+   ```
 
-11) Launching the image in Minikube:
+12) Launching the image in Minikube:
 
+    ```bash
+    #! /bin/bash
+    
     eval $(minikube docker-env)
 
     docker build -t visit-counter:1.0 .
 
     minikube image list
+    ```
 
-12) Deployment in Kubernetes:
+14) Deployment in Kubernetes:
 
+    ```bash
+    #! /bin/bash
+    
     kubectl apply -f kubernetes/deployment.yaml
 
     kubectl apply -f kubernetes/service.yaml
@@ -256,9 +309,12 @@ Result:
     kubectl get services
 
     kubectl logs -f <pod-name> - replace pod-name with name of the pod whose logs you want look
+    ```
 
-13) Test in the Kubernetes:
-
+16) Test in the Kubernetes:
+    ```bash
+    #! /bin/bash
+    
     minikube srvices visit-counter-services --url
 
     kubectl port-forward service/visit-counter-service 8000:80
@@ -267,8 +323,12 @@ Result:
         curl http://localhost:8000/
         curl http://localhost:8000/health
         curl http://localhost:8000/stats
+    ```
 
-14) Monitoring and management:
+18) Monitoring and management:
+
+    ```bash
+    #! /bin/bash        
 
         kubectl get all
     
@@ -277,3 +337,4 @@ Result:
         kubectl scale deployment visit-counter --replicas=5
     
         kubectl get pods
+    ```

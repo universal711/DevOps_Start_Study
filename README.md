@@ -20,10 +20,21 @@ Before running this, install Docker and Kubernetes.
    
    ```bash
    #! /bin/bash
-   {
-   "name" : "visit-counter",
-   "dependecies": {
-   "express": "^4.18.2"
+  {
+     "name": "visit-counter",
+     "version": "1.0.0",
+     "description": "Visit counter app for Docker/K8s demo",
+     "main": "server.js",
+     "scripts": {
+       "start": "node server.js",
+       "dev": "nodemon server.js",
+       "test": "echo \"Error: no test specified\" && exit 1"
+     },
+     "dependencies": {
+       "express": "^4.18.2"
+     },
+     "engines": {
+       "node": ">=18.0.0"
       }
    }
    ```
@@ -126,7 +137,7 @@ Before running this, install Docker and Kubernetes.
       ```
 
 
-6) Create dockerfile:
+6) Create dockerfile and .dockerignore file:
 
    ```bash
    #! /bin/bash
@@ -134,21 +145,53 @@ Before running this, install Docker and Kubernetes.
    cat > Dockerfile << 'EOF'
 
    FROM node:18-alpine
+
+   RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
        
    WORKDIR /app
     
    COPY app/package.json ./
     
-   RUN npm install
+   RUN npm install --production --silent && npm cache clean --force
     
    COPY app/server.js ./
+
+   RUN chown -R nextjs:nodejs /app
+   USER nextjs
     
    EXPOSE 3000
+
+   HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+     CMD node -e "require('http').get('http://localhost:3000/health', (res) => \
+   { process.exit(res.statusCode === 200 ? 0 : 1) })"
     
-   CMD["node", "server.js"]
+   CMD ["node", "server.js"]
 
    EOF
    ```
+
+   ```bash
+   #! /bin/bash
+
+   cat > .dockerignore << 'EOF'
+   node_modules
+   npm-debug.log
+   .git
+   .gitignore
+   README.md
+   .env
+   .nyc_output
+   coverage
+   .DS_Store
+   Dockerfile
+   .dockerignore
+   kubernetes/
+   scripts/
+
+   EOF
+   ```
+
+   
 
 8) Check:
 
@@ -216,73 +259,258 @@ Result:
     ```bash
     #! /bin/bash
             
-        cat > kubernetes/deployment.yaml << 'EOF'
-    
-        script:
-            apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: visit-counter
-      labels:
-        app: visit-counter
-    spec:
-      replicas: 3
-      selector:
-        matchLabels:
+      cat > kubernetes/deployment.yaml << 'EOF'
+   
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: visit-counter
+        labels:
           app: visit-counter
-      template:
-        metadata:
-          labels:
+          version: "1.0"
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
             app: visit-counter
-        spec:
-          containers:
-          - name: visit-counter
-            image: visit-counter:1.0
-            imagePullPolicy: Never  # Используем локальный образ
-            ports:
-            - containerPort: 3000
-            env:
-            - name: PORT
-              value: "3000"
-            livenessProbe:
-              httpGet:
-                path: /health
-                port: 3000
-              initialDelaySeconds: 5
-              periodSeconds: 10
-            readinessProbe:
-              httpGet:
-                path: /health
-                port: 3000
-              initialDelaySeconds: 5
-              periodSeconds: 10
-
-        EOF
+        template:
+          metadata:
+            labels:
+              app: visit-counter
+              version: "1.0"
+          spec:
+            # Security Context на уровне Pod
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1001
+              runAsGroup: 1001
+              fsGroup: 1001
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+            - name: visit-counter
+              image: visit-counter:1.0
+              imagePullPolicy: IfNotPresent
+              ports:
+              - containerPort: 3000
+                protocol: TCP
+              env:
+              - name: PORT
+                valueFrom:
+                  configMapKeyRef:
+                    name: visit-counter-config
+                    key: PORT
+              - name: NODE_ENV
+                valueFrom:
+                  configMapKeyRef:
+                    name: visit-counter-config
+                    key: NODE_ENV
+              - name: API_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: visit-counter-secret
+                    key: api-key
+              # Security Context на уровне Container
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 1001
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              # Resource limits
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "100m"
+              # Health checks
+              livenessProbe:
+                httpGet:
+                  path: /health
+                  port: 3000
+                  scheme: HTTP
+                initialDelaySeconds: 10
+                periodSeconds: 15
+                timeoutSeconds: 5
+                failureThreshold: 3
+              readinessProbe:
+                httpGet:
+                  path: /health
+                  port: 3000
+                  scheme: HTTP
+                initialDelaySeconds: 5
+                periodSeconds: 10
+                timeoutSeconds: 3
+                failureThreshold: 2
+              # Мониторинг
+              lifecycle:
+                preStop:
+                  exec:
+                    command: ["/bin/sh", "-c", "sleep 5"]
+    EOF
     ```
     
     Service manifest:
     
    ```bash
    #! /bin/bash
-            
-        cat > kubernetes/service.yaml << 'EOF'
-
-            script:
-                apiVersion: v1
-        kind: Service
-        metadata:
-          name: visit-counter-service
-        spec:
-          selector:
-            app: visit-counter
-          ports:
-            - protocol: TCP
-              port: 80
-              targetPort: 3000
-          type: LoadBalancer
-
-        EOF
+   cat > kubernetes/service.yaml << 'EOF'
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: visit-counter-service
+     labels:
+       app: visit-counter
+     annotations:
+       prometheus.io/scrape: "true"
+       prometheus.io/port: "3000"
+       prometheus.io/path: "/metrics"
+   spec:
+     selector:
+       app: visit-counter
+     ports:
+     - name: http
+       protocol: TCP
+       port: 80
+       targetPort: 3000
+     type: LoadBalancer
+   EOF
    ```
+
+   ConfigMap manifest:
+   
+   ```bash
+   #! /bin/bash
+
+      cat > kubernetes/configmap.yaml << 'EOF'
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: visit-counter-config
+        labels:
+          app: visit-counter
+      data:
+        PORT: "3000"
+        NODE_ENV: "production"
+        LOG_LEVEL: "info"
+      EOF
+
+   ```
+
+   Secret manifest:
+   ```bash
+   #! /bin/bash
+
+   cat > kubernetes/secret.yaml << 'EOF'
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: visit-counter-secret
+     labels:
+       app: visit-counter
+   type: Opaque
+   data:
+     # echo -n 'my-super-secret-api-key' | base64
+     api-key: bXktc3VwZXItc2VjcmV0LWFwaS1rZXk=
+   EOF
+
+   ```
+
+   Network Policy:
+   ```bash
+   #! /bin/bash
+
+   cat > kubernetes/network-policy.yaml << 'EOF'
+   
+   apiVersion: networking.k8s.io/v1
+   kind: NetworkPolicy
+   metadata:
+     name: visit-counter-network-policy
+     labels:
+       app: visit-counter
+   spec:
+     podSelector:
+       matchLabels:
+         app: visit-counter
+     policyTypes:
+     - Ingress
+     ingress:
+     - ports:
+       - protocol: TCP
+         port: 3000
+       from:
+       - namespaceSelector: {}
+     - ports:
+       - protocol: TCP
+         port: 3000
+       from:
+       - podSelector:
+           matchLabels:
+             app: visit-counter
+   EOF
+   ```
+
+
+   Horizantal Pod Autoscaler:
+   ```bash
+   #! /bin/bash
+      cat > kubernetes/hpa.yaml << 'EOF'
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: visit-counter-hpa
+        labels:
+          app: visit-counter
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: visit-counter
+        minReplicas: 2
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 50
+        - type: Resource
+          resource:
+            name: memory
+            target:
+              type: Utilization
+              averageUtilization: 70
+        behavior:
+          scaleDown:
+            stabilizationWindowSeconds: 60
+            policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 30
+      EOF
+   ```
+
+
+   Service Account:
+   ```bash
+   #! /bin/bash
+   cat > kubernetes/service-account.yaml << 'EOF'
+   apiVersion: v1
+   kind: ServiceAccount
+   metadata:
+     name: visit-counter-sa
+     labels:
+       app: visit-counter
+   automountServiceAccountToken: false
+   EOF
+   ```
+    
+   
 
 12) Launching the image in Minikube:
 

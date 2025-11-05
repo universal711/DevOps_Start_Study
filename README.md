@@ -198,7 +198,7 @@ Before running this, install Docker and Kubernetes.
 
    
 
-8) Check:
+7) Check:
 
    ```bash
    #! /bin/bash
@@ -215,7 +215,7 @@ Before running this, install Docker and Kubernetes.
 
     docker build -t visit-counter:1.0 .
     
-    docker image | grep visit-counter
+    docker images | grep visit-counter
     
     docker run -d --name my-app -p 3000:3000 visit-counter:1.0
     

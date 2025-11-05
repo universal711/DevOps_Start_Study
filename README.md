@@ -20,9 +20,8 @@ Before running this, install Docker and Kubernetes.
    
    ```bash
    #! /bin/bash
-
   {
-     "name": "visit-counter",
+   "name": "visit-counter",
      "version": "1.0.0",
      "description": "Visit counter app for Docker/K8s demo",
      "main": "server.js",

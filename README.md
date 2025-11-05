@@ -20,6 +20,7 @@ Before running this, install Docker and Kubernetes.
    
    ```bash
    #! /bin/bash
+
   {
      "name": "visit-counter",
      "version": "1.0.0",
@@ -37,6 +38,7 @@ Before running this, install Docker and Kubernetes.
        "node": ">=18.0.0"
       }
    }
+   
    ```
         
   

@@ -13,22 +13,23 @@ Before running this, install Docker and Kubernetes.
    mkdir express-kubernetes-vc && cd express-kubernetes-vc
    mkdir app kubernetes scripts
    cd app
+   
    ```
 
-       Create package.json:
+   Create package.json:
    
-            ```bash
-            #! /bin/bash
-                {
-                  "name" : "visit-counter",
-                  "dependecies": {
-                    "express": "^4.18.2"
-                    }
-                }
-            ```
+   ```bash
+   #! /bin/bash
+   {
+   "name" : "visit-counter",
+   "dependecies": {
+   "express": "^4.18.2"
+      }
+   }
+   ```
         
   
-        Create server.js:
+    Create server.js:
       ```bash
       #! /bin/bash
             

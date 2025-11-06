@@ -55,19 +55,15 @@ Before running this, install Docker and Kubernetes.
                 const app = express();
                 const PORT = process.env.PORT || 3000;
 
-                // Безопасность: ограничиваем размер JSON
                 app.use(express.json({ limit: '1mb' }));
       
-                // Переменная для хранения счетчика
                 let visitCount = 0;
                 
-                // Middleware для логирования запросов
                 app.use((req, res, next) => {
                   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}` - IP: ${req.ip}`);;
                   next();
                 });
                 
-                // Основной endpoint - счетчик посещений
                 app.get('/', (req, res) => {
                   visitCount++;
                   res.json({
@@ -79,7 +75,6 @@ Before running this, install Docker and Kubernetes.
                   });
                 });
                 
-                // Health check endpoint
                 app.get('/health', (req, res) => {
                   res.status(200).json({ 
                     status: 'OK', 
@@ -89,7 +84,6 @@ Before running this, install Docker and Kubernetes.
                   });
                 });
                 
-                // Endpoint для получения статистики
                 app.get('/stats', (req, res) => {
                   res.json({
                     totalVisits: visitCount,
@@ -99,7 +93,6 @@ Before running this, install Docker and Kubernetes.
                   });
                 });
 
-                // Метрики для мониторинга
                 app.get('/metrics', (req, res) => {
                   res.json({
                     visitCount: visitCount,
@@ -108,11 +101,7 @@ Before running this, install Docker and Kubernetes.
                     timestamp: new Date().toISOString()
                   });
                 });
-
-
-
-      
-                // Обработка 404 ошибок
+                
                 app.use('*', (req, res) => {
                   res.status(404).json({
                     error: 'Endpoint not found',
@@ -125,7 +114,6 @@ Before running this, install Docker and Kubernetes.
                   });
                 });
 
-                // Обработка ошибок
                 app.use((err, req, res, next) => {
                   console.error('Error:', err.stack);
                   res.status(500).json({
@@ -134,14 +122,12 @@ Before running this, install Docker and Kubernetes.
                   });
                 });
                 
-                // Запуск сервера
                 app.listen(PORT, '0.0.0.0', () => {
                   console.log(`Server started on port ${PORT}`);
                   console.log(`Health check: http://localhost:${PORT}/health`);
                   console.log(`Main endpoint: http://localhost:${PORT}/`);
                 });
 
-                // Graceful shutdown
                 process.on('SIGTERM', () => {
                   console.log('Received SIGTERM, shutting down gracefully');
                   process.exit(0);

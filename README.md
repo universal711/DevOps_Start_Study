@@ -60,7 +60,7 @@ Before running this, install Docker and Kubernetes.
                 let visitCount = 0;
                 
                 app.use((req, res, next) => {
-                  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}` - IP: ${req.ip}`);;
+                  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`);
                   next();
                 });
                 
@@ -208,7 +208,7 @@ Before running this, install Docker and Kubernetes.
    npm-debug.log
    .git
    .gitignore
-   README.md
+    README.md
    .env
    .nyc_output
    coverage

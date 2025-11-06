@@ -147,6 +147,10 @@ EOF
 
 In the First terminal:
 
+```bash
+!# /bin/bash
+
+
 cd ~/express-kubernetes-vc/app
 
 npm install
@@ -154,10 +158,14 @@ npm install
 cd ~/express-kubernetes-vc/app
 
 node server.js
+
+```
    
 In the second terminal:
 
-```
+```bash
+!# /bin/bash
+
 curl http://localhost:3000/
 curl http://localhost:3000/health
 curl http://localhost:3000/stats
@@ -165,7 +173,7 @@ curl http://localhost:3000/stats
 
 
 
-6) Create dockerfile and .dockerignore file:
+5) Create dockerfile and .dockerignore file:
 
 ```bash
 #! /bin/bash
@@ -219,7 +227,7 @@ scripts/
 EOF
 ```
    
-7)Build and start in DOCKER:
+6)Build and start in DOCKER:
 
 ```bash
 #! /bin/bash
@@ -253,7 +261,7 @@ Result:
     }
    ```
 
-8)Stop container:
+7)Stop container:
 
 ```bash
 #! /bin/bash
@@ -262,7 +270,7 @@ docker stop my-app
 docker rm my-app
 ```
 
-9)Work with Kubernetes(minikube):
+8)Work with Kubernetes(minikube):
 
 ```bash
 #! /bin/bash
@@ -272,7 +280,7 @@ minikube status
 kubectl get nodes
 ```
     
-10) Create Kubernetes manifests:
+9) Create Kubernetes manifests:
 
 Namespace manifest:
 
@@ -517,7 +525,7 @@ EOF
 
 
 
-11) Launching the image in Minikube:
+10) Launching the image in Minikube:
 
     ```bash
     #! /bin/bash
@@ -529,7 +537,7 @@ EOF
     minikube image list
     ```
 
-12) Deployment in Kubernetes:
+11) Deployment in Kubernetes:
 
 ```bash
 #! /bin/bash
@@ -544,7 +552,7 @@ kubectl apply -f kubernetes/hpa.yaml
 
 ```
 
-13) Test in the Kubernetes:
+12) Test in the Kubernetes:
 ```bash
 #! /bin/bash
 
@@ -562,7 +570,7 @@ curl http://localhost:8000/health
 curl http://localhost:8000/stats
 ```
 
-14) Monitoring and management:
+13) Monitoring and management:
 
     ```bash
     #! /bin/bash        
@@ -579,8 +587,7 @@ curl http://localhost:8000/stats
 
 
                                                  CLEAR
-
-1) Delete Kubernetes
+Delete Kubernetes
 
 Or all:
    

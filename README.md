@@ -54,13 +54,16 @@ Before running this, install Docker and Kubernetes.
                 const express = require('express');
                 const app = express();
                 const PORT = process.env.PORT || 3000;
-                
+
+                // Безопасность: ограничиваем размер JSON
+                app.use(express.json({ limit: '1mb' }));
+      
                 // Переменная для хранения счетчика
                 let visitCount = 0;
                 
                 // Middleware для логирования запросов
                 app.use((req, res, next) => {
-                  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+                  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}` - IP: ${req.ip}`);;
                   next();
                 });
                 
@@ -71,13 +74,14 @@ Before running this, install Docker and Kubernetes.
                     message: 'Hello from Docker & Kubernetes!',
                     visitCount: visitCount,
                     timestamp: new Date().toISOString(),
-                    containerId: process.env.HOSTNAME || 'local'
+                    containerId: process.env.HOSTNAME || 'local',
+                    nodeVersion: process.version
                   });
                 });
                 
                 // Health check endpoint
                 app.get('/health', (req, res) => {
-                  res.json({ 
+                  res.status(200).json({ 
                     status: 'OK', 
                     service: 'visit-counter',
                     timestamp: new Date().toISOString(),
@@ -90,10 +94,24 @@ Before running this, install Docker and Kubernetes.
                   res.json({
                     totalVisits: visitCount,
                     serverTime: new Date().toISOString(),
-                    uptime: process.uptime()
+                    uptime: process.uptime(),
+                    memoryUsage: process.memoryUsage()
                   });
                 });
-                
+
+                // Метрики для мониторинга
+                app.get('/metrics', (req, res) => {
+                  res.json({
+                    visitCount: visitCount,
+                    uptime: process.uptime(),
+                    memory: process.memoryUsage(),
+                    timestamp: new Date().toISOString()
+                  });
+                });
+
+
+
+      
                 // Обработка 404 ошибок
                 app.use('*', (req, res) => {
                   res.status(404).json({
@@ -101,8 +119,18 @@ Before running this, install Docker and Kubernetes.
                     availableEndpoints: [
                       'GET /',
                       'GET /health',
-                      'GET /stats'
+                      'GET /stats',
+                      'GET /metrics'
                     ]
+                  });
+                });
+
+                // Обработка ошибок
+                app.use((err, req, res, next) => {
+                  console.error('Error:', err.stack);
+                  res.status(500).json({
+                    error: 'Internal Server Error',
+                    message: 'Something went wrong!'
                   });
                 });
                 
@@ -111,6 +139,17 @@ Before running this, install Docker and Kubernetes.
                   console.log(`Server started on port ${PORT}`);
                   console.log(`Health check: http://localhost:${PORT}/health`);
                   console.log(`Main endpoint: http://localhost:${PORT}/`);
+                });
+
+                // Graceful shutdown
+                process.on('SIGTERM', () => {
+                  console.log('Received SIGTERM, shutting down gracefully');
+                  process.exit(0);
+                });
+               
+                process.on('SIGINT', () => {
+                  console.log('Received SIGINT, shutting down gracefully');
+                  process.exit(0);
                 });
       EOF
       ```
@@ -168,7 +207,7 @@ Before running this, install Docker and Kubernetes.
 
    HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
      CMD node -e "require('http').get('http://localhost:3000/health', (res) => \
-   { process.exit(res.statusCode === 200 ? 0 : 1) })"
+   { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
     
    CMD ["node", "server.js"]
 
@@ -270,6 +309,7 @@ Result:
       kind: Deployment
       metadata:
         name: visit-counter
+        namespace: visit-counter
         labels:
           app: visit-counter
           version: "1.0"
@@ -283,8 +323,12 @@ Result:
             labels:
               app: visit-counter
               version: "1.0"
+            annotations:
+              prometheus.io/scrape: "true"
+              prometheus.io/port: "3000"
+              prometheus.io/path: "/metrics"
           spec:
-            # Security Context на уровне Pod
+            serviceAcoountName: visit-counter-sa
             securityContext:
               runAsNonRoot: true
               runAsUser: 1001
@@ -315,7 +359,6 @@ Result:
                   secretKeyRef:
                     name: visit-counter-secret
                     key: api-key
-              # Security Context на уровне Container
               securityContext:
                 allowPrivilegeEscalation: false
                 runAsNonRoot: true
@@ -324,7 +367,6 @@ Result:
                 capabilities:
                   drop:
                     - ALL
-              # Resource limits
               resources:
                 requests:
                   memory: "64Mi"
@@ -332,7 +374,6 @@ Result:
                 limits:
                   memory: "128Mi"
                   cpu: "100m"
-              # Health checks
               livenessProbe:
                 httpGet:
                   path: /health
@@ -351,7 +392,6 @@ Result:
                 periodSeconds: 10
                 timeoutSeconds: 3
                 failureThreshold: 2
-              # Мониторинг
               lifecycle:
                 preStop:
                   exec:
@@ -405,6 +445,22 @@ Result:
       EOF
 
    ```
+
+
+
+   Namespace manifest:
+   ```bash
+   !# /bin/bash
+   cat > kubernetes/namespace.yaml << 'EOF'
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: visit-counter
+     labels:
+       name: visit-counter
+   EOF
+   ```
+   
 
    Secret manifest:
    ```bash
@@ -533,25 +589,23 @@ Result:
 
     ```bash
     #! /bin/bash
-    
+    kubectl apply -f kubernetes/namespace.yaml
+    kubectl apply -f kubernetes/configmap.yaml
+    kubectl apply -f kubernetes/secret.yaml
+    kubectl apply -f kubernetes/service-account.yaml
     kubectl apply -f kubernetes/deployment.yaml
-
     kubectl apply -f kubernetes/service.yaml
-
-    kubectl get deployments
-    kubectl get pods
-    kubectl get services
-
-    kubectl logs -f <pod-name> - replace pod-name with name of the pod whose logs you want look
+    kubectl apply -f kubernetes/network-policy.yaml
+    kubectl apply -f kubernetes/hpa.yaml
     ```
 
 16) Test in the Kubernetes:
     ```bash
     #! /bin/bash
     
-    minikube srvices visit-counter-services --url
+    minikube srvice visit-counter-service --url -n visit-counter
 
-    kubectl port-forward service/visit-counter-service 8000:80
+    kubectl port-forward service/visit-counter-service 8000:80 -n visit-counter
 
     Test in new terminal:
         curl http://localhost:8000/
@@ -564,13 +618,12 @@ Result:
     ```bash
     #! /bin/bash        
 
-        kubectl get all
+    kubectl get all -n visit-counter
     
-        kubectl describe deployment visit-counter
+    kubectl describe deployment visit-counter -n visit-counter
 
-        kubectl scale deployment visit-counter --replicas=5
+    kubecrl logs -l app=visit-counter -n visit-counter --tail=50
     
-        kubectl get pods
     ```
 
 

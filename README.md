@@ -48,8 +48,6 @@ Before running this, install Docker and Kubernetes.
 Create server.js:
 ```bash
 #! /bin/bash
-            
-cat > server.js << 'EOF'
 
 cat > server.js << 'EOF'
 

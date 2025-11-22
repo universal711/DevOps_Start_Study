@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: visit-counter-network-policy
+  namespace: visit-counter
+  labels:
+    app: visit-counter
+spec:
+  podSelector:
+    matchLabels:
+      app: visit-counter
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 3000
+    from:
+    - namespaceSelector: {}
+  - ports:
+    - protocol: TCP
+      port: 3000
+    from:
+    - podSelector:
+        matchLabels:
+          app: visit-counter

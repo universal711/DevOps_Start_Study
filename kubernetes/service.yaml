@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: visit-counter-service
+  namespace: visit-counter
+  labels:
+    app: visit-counter
+spec:
+  selector:
+    app: visit-counter
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 3000
+  type: LoadBalancer

@@ -55,7 +55,7 @@ jobs:
         minikube start --driver=docker --memory=4096 --cpus=2 --force
         minikube status
         
-        # Настраиваем Docker для Minikube
+        # КРИТИЧЕСКИ ВАЖНО: Настраиваем Docker для Minikube
         eval $(minikube docker-env)
 
     - name: Build image in Minikube environment
@@ -90,7 +90,7 @@ spec:
       containers:
       - name: visit-counter
         image: ${{ env.IMAGE_NAME }}:latest
-        imagePullPolicy: Never  
+        imagePullPolicy: Never  # НЕ пытаться скачивать извне!
         ports:
         - containerPort: 3000
         env:
@@ -132,8 +132,6 @@ DEPLOYMENTEOF
         kubectl apply -f kubernetes/service.yaml
         
         echo "✅ Kubernetes resources applied"
-
-
 
     - name: Wait for deployment with better diagnostics
       run: |
@@ -204,4 +202,3 @@ DEPLOYMENTEOF
         echo "✅ Application successfully deployed to Kubernetes!"
         echo "📊 Final status:"
         kubectl get all -n ${{ env.K8S_NAMESPACE }}
-

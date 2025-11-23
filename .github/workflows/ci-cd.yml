@@ -19,11 +19,20 @@ jobs:
       run: |
         cd app
         npm ci
+        
+        # Запускаем приложение и запоминаем PID
         npm start &
+        SERVER_PID=$!
         sleep 5
+        
+        # Тестируем
         curl -f http://localhost:3000/health
         curl -f http://localhost:3000/
-        echo "✅ Node.js app works perfectly!"
+        
+        # ОСТАНАВЛИВАЕМ приложение после тестов
+        kill $SERVER_PID || true
+        sleep 2
+        echo "✅ Node.js app tested and stopped!"
 
     - name: Build Docker image
       run: |
@@ -32,6 +41,7 @@ jobs:
 
     - name: Test Docker image locally
       run: |
+        # Убедимся что порт свободен
         docker run -d --name test-container -p 3000:3000 ${{ env.IMAGE_NAME }}:test
         sleep 5
         curl -f http://localhost:3000/health
@@ -134,9 +144,9 @@ jobs:
       run: |
         echo "🕒 Waiting for pod to be ready..."
         
-        # Wait up to 2 minutes for pod
-        for i in {1..24}; do
-          echo "Attempt $i/24"
+        # Wait up to 3 minutes for pod
+        for i in {1..36}; do
+          echo "Attempt $i/36"
           
           # Get pod status
           POD_STATUS=$(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "No pod")

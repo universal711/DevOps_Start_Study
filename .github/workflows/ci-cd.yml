@@ -83,7 +83,7 @@ jobs:
         kubectl apply -f kubernetes/service-account.yaml
 
         # Create a temporary deployment file with correct settings for Minikube
-        cat > deployment-minikube.yaml << DEPLOYMENT_EOF
+        cat > deployment-minikube.yaml << 'DEPLOYMENT_EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:

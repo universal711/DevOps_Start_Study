@@ -136,8 +136,11 @@ jobs:
 
     - name: Build Docker image in Minikube
       run: |
-        docker build -t ${{ env.IMAGE_NAME }}:latest .
-        minikube image load visit-counter:latest
+        eval $(minikube docker-env)
+        docker build -t visit-counter:latest .
+
+        echo "Проверка образов в Minikube:"
+        docker images | grep visit-counter
 
     - name: Deploy to Kubernetes
       run: |

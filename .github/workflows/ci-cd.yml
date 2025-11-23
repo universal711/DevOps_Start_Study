@@ -155,18 +155,16 @@ jobs:
 
     - name: Verify deployment
       run: |
-        # Wait for deployment to be ready
-        kubectl rollout status deployment/visit-counter -n ${{ env.K8S_NAMESPACE }} --timeout=300s
-
         echo "=== Pods status ==="
         kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
-    
+        
         echo "=== Pods description ==="
         kubectl describe pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter
-    
+
         echo "=== Pods logs ==="
         for pod in $(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter -o name); do
-          echo "Logs for $pod:"
+        
+        echo "Logs for $pod:"
           kubectl logs -n ${{ env.K8S_NAMESPACE }} $pod || true
         done
         
@@ -181,6 +179,8 @@ jobs:
         
         # Show pod details
         kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
+        # Wait for deployment to be ready
+        kubectl rollout status deployment/visit-counter -n ${{ env.K8S_NAMESPACE }} --timeout=300s
 
     - name: Run smoke tests
       run: |

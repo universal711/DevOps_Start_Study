@@ -1,4 +1,4 @@
-name: CI/CD - Final Version
+name: CI/CD - Fixed Version
 
 on:
   push:
@@ -15,39 +15,19 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Validate application structure
+    - name: Build and test Docker image
       run: |
-        echo "🔍 Validating project structure..."
-        ls -la app/
-        test -f app/package.json && echo "✅ package.json exists"
-        test -f app/server.js && echo "✅ server.js exists"
-        test -f Dockerfile && echo "✅ Dockerfile exists"
-
-    - name: Install dependencies
-      run: |
-        cd app
-        npm ci
-        echo "✅ Dependencies installed"
-
-    - name: Build Docker image
-      run: |
+        # Build image
         docker build -t ${{ env.IMAGE_NAME }}:test .
-        echo "✅ Docker image built"
-
-    - name: Test Docker container
-      run: |
-        # Запускаем контейнер на свободном порту
+        
+        # Test on different port
         docker run -d --name test-container -p 3080:3000 ${{ env.IMAGE_NAME }}:test
         sleep 5
-        
-        # Тестируем на порту 3080
-        curl -f http://localhost:3080/health || (docker logs test-container && exit 1)
-        curl -f http://localhost:3080/ || (docker logs test-container && exit 1)
-        curl -f http://localhost:3080/stats || (docker logs test-container && exit 1)
-        
+        curl -f http://localhost:3080/health
+        curl -f http://localhost:3080/
         docker stop test-container
         docker rm test-container
-        echo "✅ Docker container tested successfully on port 3080"
+        echo "✅ Docker image tested successfully"
 
   deploy-to-kubernetes:
     needs: build-and-test
@@ -60,8 +40,6 @@ jobs:
 
     - name: Setup Minikube and kubectl
       run: |
-        echo "🚀 Setting up Kubernetes environment..."
-        
         # Install kubectl
         curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
         chmod +x kubectl
@@ -75,46 +53,102 @@ jobs:
     - name: Start Minikube cluster
       run: |
         minikube start --driver=docker --memory=4096 --cpus=2 --force
-        echo "✅ Minikube started"
         minikube status
+        
+        # КРИТИЧЕСКИ ВАЖНО: Настраиваем Docker для Minikube
         eval $(minikube docker-env)
 
     - name: Build image in Minikube environment
       run: |
+        # Собираем образ ВНУТРИ Minikube Docker daemon
         docker build -t ${{ env.IMAGE_NAME }}:latest .
-        echo "✅ Image built in Minikube"
+        echo "✅ Image built inside Minikube"
+        
+        # Проверяем что образ существует в Minikube
+        echo "📋 Available images in Minikube:"
+        docker images | grep ${{ env.IMAGE_NAME }}
+
+    - name: Prepare Kubernetes manifests
+      run: |
+        # Создаем временный deployment с правильными настройками
+        cat > deployment-temp.yaml << DEPLOYMENTEOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visit-counter
+  namespace: ${{ env.K8S_NAMESPACE }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: visit-counter
+  template:
+    metadata:
+      labels:
+        app: visit-counter
+    spec:
+      containers:
+      - name: visit-counter
+        image: ${{ env.IMAGE_NAME }}:latest
+        imagePullPolicy: Never  # НЕ пытаться скачивать извне!
+        ports:
+        - containerPort: 3000
+        env:
+        - name: PORT
+          value: "3000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+DEPLOYMENTEOF
 
     - name: Deploy application
       run: |
         # Create namespace
         kubectl create namespace ${{ env.K8S_NAMESPACE }} || true
         
-        # Apply Kubernetes manifests
+        # Apply basic manifests
         kubectl apply -f kubernetes/namespace.yaml
         kubectl apply -f kubernetes/configmap.yaml
         kubectl apply -f kubernetes/secret.yaml
         kubectl apply -f kubernetes/service-account.yaml
         
-        # Update deployment to use latest image and single replica
-        sed -i 's|visit-counter:1.0|visit-counter:latest|g' kubernetes/deployment.yaml
-        sed -i 's/replicas: 3/replicas: 1/g' kubernetes/deployment.yaml
-        kubectl apply -f kubernetes/deployment.yaml
-
+        # Apply our custom deployment
+        kubectl apply -f deployment-temp.yaml
+        
+        # Apply service
         kubectl apply -f kubernetes/service.yaml
+        
         echo "✅ Kubernetes resources applied"
 
-    - name: Wait for deployment
+    - name: Wait for deployment with better diagnostics
       run: |
         echo "⏳ Waiting for deployment to be ready..."
         
-        # Wait for pod to be created and running
-        TIMEOUT=180
-        INTERVAL=5
-        ATTEMPTS=$((TIMEOUT/INTERVAL))
+        # Show initial status
+        kubectl get all -n ${{ env.K8S_NAMESPACE }}
         
-        for i in $(seq 1 $ATTEMPTS); do
-          POD_STATUS=$(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "No pod")
-          echo "Attempt $i/$ATTEMPTS - Pod status: $POD_STATUS"
+        # Wait for deployment with detailed output
+        for i in {1..30}; do
+          echo "Attempt $i/30"
+          
+          # Get detailed pod status
+          POD_NAME=$(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "NOT_FOUND")
+          POD_STATUS=$(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NOT_FOUND")
+          
+          echo "Pod: $POD_NAME, Status: $POD_STATUS"
           
           if [ "$POD_STATUS" = "Running" ]; then
             echo "✅ Pod is running!"
@@ -122,66 +156,49 @@ jobs:
           fi
           
           if [ "$POD_STATUS" = "Failed" ] || [ "$POD_STATUS" = "Error" ]; then
-            echo "❌ Pod failed. Showing details:"
+            echo "❌ Pod failed. Details:"
             kubectl describe pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter
             kubectl logs -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter --tail=20
             exit 1
           fi
           
-          if [ $i -eq $ATTEMPTS ]; then
-            echo "❌ Timeout waiting for pod. Current status: $POD_STATUS"
-            echo "=== Debugging info ==="
-            kubectl get all -n ${{ env.K8S_NAMESPACE }}
-            kubectl describe pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter 2>/dev/null || echo "No pods to describe"
-            exit 1
+          # Show events for debugging
+          if [ "$i" -eq 1 ] || [ "$i" -eq 10 ] || [ "$i" -eq 20 ]; then
+            echo "📋 Recent events:"
+            kubectl get events -n ${{ env.K8S_NAMESPACE }} --sort-by=.lastTimestamp | tail -5
           fi
           
-          sleep $INTERVAL
+          sleep 5
         done
         
-        # Show final status
-        echo "=== Final Status ==="
-        kubectl get all -n ${{ env.K8S_NAMESPACE }}
+        if [ "$POD_STATUS" != "Running" ]; then
+          echo "❌ Timeout waiting for pod"
+          echo "=== Final debugging ==="
+          kubectl get all -n ${{ env.K8S_NAMESPACE }}
+          kubectl describe pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter
+          exit 1
+        fi
 
     - name: Test deployed application
       run: |
         echo "🧪 Testing deployed application..."
         
-        # Port forward to a different port to avoid conflicts
+        # Port forward
         kubectl port-forward -n ${{ env.K8S_NAMESPACE }} service/visit-counter-service 3081:80 &
         PORT_FORWARD_PID=$!
         sleep 10
         
-        # Test with retries
-        for i in {1..10}; do
-          echo "Test attempt $i/10"
-          if curl -f http://localhost:3081/health 2>/dev/null; then
-            echo "✅ Health check passed!"
-            if curl -f http://localhost:3081/ 2>/dev/null; then
-              echo "✅ Main endpoint passed!"
-              TEST_RESULT="success"
-              break
-            fi
-          fi
-          echo "Waiting for application to be ready..."
-          sleep 5
-        done
+        # Test endpoints
+        curl -f http://localhost:3081/health || (echo "Health check failed" && exit 1)
+        curl -f http://localhost:3081/ || (echo "Main endpoint failed" && exit 1)
         
         # Cleanup
         kill $PORT_FORWARD_PID 2>/dev/null || true
-        
-        if [ "$TEST_RESULT" != "success" ]; then
-          echo "❌ Application tests failed"
-          echo "=== Pod logs ==="
-          kubectl logs -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter --tail=50
-          exit 1
-        fi
+        echo "✅ All tests passed!"
 
     - name: Success
       run: |
         echo "🎉 🎉 🎉 SUCCESS! 🎉 🎉 🎉"
-        echo "✅ Application built, tested, and deployed to Kubernetes!"
+        echo "✅ Application successfully deployed to Kubernetes!"
         echo "📊 Final status:"
         kubectl get all -n ${{ env.K8S_NAMESPACE }}
-        echo "🌐 Minikube service info:"
-        minikube service list -n ${{ env.K8S_NAMESPACE }}

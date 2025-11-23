@@ -157,8 +157,30 @@ jobs:
         kubectl apply -f kubernetes/network-policy.yaml
         kubectl apply -f kubernetes/hpa.yaml
 
-    - name: Verify deployment
+    - name: Debug container startup
       run: |
+        # Ждем немного для запуска контейнеров
+        sleep 30
+        
+        # Смотрим статус подов
+        echo "=== Pods status after 30s ==="
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
+        
+        # Пытаемся получить логи даже для упавших контейнеров
+        echo "=== Attempting to get logs ==="
+        for pod in $(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter -o name); do
+          echo "Logs for $pod:"
+          kubectl logs -n ${{ env.K8S_NAMESPACE }} $pod --prefix=true || \
+          kubectl logs -n ${{ env.K8S_NAMESPACE }} $pod --previous --prefix=true || \
+          echo "No logs available"
+        done
+        
+        # Детальная информация о подах
+        echo "=== Pods details ==="
+        kubectl describe pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter
+
+    - name: Verify deployment
+    run: |
         echo "=== Pods status ==="
         kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
         

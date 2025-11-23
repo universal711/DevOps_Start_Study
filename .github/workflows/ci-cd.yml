@@ -71,7 +71,7 @@ jobs:
     - name: Prepare Kubernetes manifests
       run: |
         # Создаем временный deployment с правильными настройками
-        cat > deployment-temp.yaml << DEPLOYMENTEOF
+        cat > deployment-temp.yaml << 'DEPLOYMENTEOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -113,6 +113,8 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 5
 DEPLOYMENTEOF
+
+        echo "✅ Deployment manifest created"
 
     - name: Deploy application
       run: |

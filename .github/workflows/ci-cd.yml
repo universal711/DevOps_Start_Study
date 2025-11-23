@@ -45,6 +45,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write 
 
     steps:
     - name: Checkout code
@@ -83,6 +84,9 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write 
+      contents: read
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -100,3 +104,51 @@ jobs:
       if: always()
       with:
         sarif_file: 'trivy-results.sarif'
+        wait-for-processing: true
+
+  deploy-to-minikube:
+    needs: [test, build-and-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Minikube
+      uses: manusa/actions-setup-minikube@v2
+      with:
+        minikube version: 'v1.32.0'
+        kubernetes version: 'v1.28.0'
+
+    - name: Build image (for Minikube)
+      run: |
+        eval $(minikube docker-env)
+        docker build -t ${{ env.IMAGE_NAME }}:latest .
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Update deployment with latest image
+        sed -i 's|visit-counter:1.0|visit-counter:latest|g' kubernetes/deployment.yaml
+        
+        kubectl apply -f kubernetes/namespace.yaml
+        kubectl apply -f kubernetes/configmap.yaml
+        kubectl apply -f kubernetes/secret.yaml
+        kubectl apply -f kubernetes/service-account.yaml
+        kubectl apply -f kubernetes/deployment.yaml
+        kubectl apply -f kubernetes/service.yaml
+        kubectl apply -f kubernetes/network-policy.yaml
+        kubectl apply -f kubernetes/hpa.yaml
+
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/visit-counter -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+        kubectl get all -n ${{ env.K8S_NAMESPACE }}
+
+    - name: Run smoke tests
+      run: |
+        kubectl port-forward service/visit-counter-service 8080:80 -n ${{ env.K8S_NAMESPACE }} &
+        sleep 10
+        curl -f http://localhost:8080/health || exit 1
+        curl -f http://localhost:8080/ || exit 1
+

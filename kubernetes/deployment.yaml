@@ -63,7 +63,6 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 3
           failureThreshold: 3
-        # securityContext должен быть на этом уровне, а не внутри проб
         securityContext:
           runAsNonRoot: true
           runAsUser: 1001

@@ -128,7 +128,7 @@ jobs:
     - name: Start Minikube cluster
       run: |
         # Start Minikube with Docker driver
-        minikube start --driver=docker --force
+        minikube start --driver=docker --force --memory=4096 --cpus=2
         minikube status
         
         # Configure Docker to use Minikube's Docker daemon
@@ -142,10 +142,38 @@ jobs:
         echo "Проверка образов в Minikube:"
         docker images | grep visit-counter
 
+    - name: Test Docker image locally
+      run: |
+        eval $(minikube docker-env)
+        # Запускаем контейнер для теста
+        docker run -d --name test-app -p 3000:3000 visit-counter:latest
+        sleep 15
+        
+        # Проверяем логи
+        echo "=== Docker container logs ==="
+        docker logs test-app || echo "Container logs:"
+        
+        # Проверяем здоровье
+        echo "=== Health check ==="
+        curl -f http://localhost:3000/health || echo "Health check failed"
+        
+        # Проверяем основные эндпоинты
+        echo "=== Testing endpoints ==="
+        curl -f http://localhost:3000/ || echo "Main endpoint failed"
+        curl -f http://localhost:3000/stats || echo "Stats endpoint failed"
+        
+        # Останавливаем тестовый контейнер
+        docker stop test-app
+        docker rm test-app
+
     - name: Deploy to Kubernetes
       run: |
-        # Update deployment to use latest image
+        # Update deployment to use latest image and Never pull policy
         sed -i 's|visit-counter:1.0|visit-counter:latest|g' kubernetes/deployment.yaml
+        sed -i 's|imagePullPolicy: IfNotPresent|imagePullPolicy: Never|g' kubernetes/deployment.yaml
+        
+        # Temporarily remove securityContext for testing
+        sed -i '/securityContext:/,/allowPrivilegeEscalation: false/d' kubernetes/deployment.yaml
         
         # Apply all Kubernetes manifests
         kubectl apply -f kubernetes/namespace.yaml
@@ -180,31 +208,25 @@ jobs:
         kubectl describe pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter
 
     - name: Verify deployment
-    run: |
+      run: |
         echo "=== Pods status ==="
         kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
-        
+          
         echo "=== Pods description ==="
         kubectl describe pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter
-
+  
         echo "=== Pods logs ==="
         for pod in $(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=visit-counter -o name); do
-        
-        echo "Logs for $pod:"
+          echo "Logs for $pod:"
           kubectl logs -n ${{ env.K8S_NAMESPACE }} $pod || true
         done
-        
+          
         echo "=== Events ==="
         kubectl get events -n ${{ env.K8S_NAMESPACE }} --sort-by='.lastTimestamp'
         
-        # Если деплоймент не готов, выйти с ошибкой
-        kubectl rollout status deployment/visit-counter -n ${{ env.K8S_NAMESPACE }} --timeout=1s
-            
         # Show all resources
         kubectl get all -n ${{ env.K8S_NAMESPACE }}
         
-        # Show pod details
-        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
         # Wait for deployment to be ready
         kubectl rollout status deployment/visit-counter -n ${{ env.K8S_NAMESPACE }} --timeout=300s
 

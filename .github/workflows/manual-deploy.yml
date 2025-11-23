@@ -1,0 +1,67 @@
+name: Manual Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      image-tag:
+        description: 'Docker image tag'
+        required: true
+        default: 'latest'
+
+env:
+  K8S_NAMESPACE: visit-counter
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Minikube
+      uses: manusa/actions-setup-minikube@v2
+      with:
+        minikube version: 'v1.32.0'
+        kubernetes version: 'v1.28.0'
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Update image tag in deployment
+        sed -i 's|visit-counter:.*|visit-counter:${{ github.event.inputs.image-tag }}|g' kubernetes/deployment.yaml
+        
+        kubectl apply -f kubernetes/namespace.yaml
+        kubectl apply -f kubernetes/configmap.yaml
+        kubectl apply -f kubernetes/secret.yaml
+        kubectl apply -f kubernetes/service-account.yaml
+        kubectl apply -f kubernetes/deployment.yaml
+        kubectl apply -f kubernetes/service.yaml
+        kubectl apply -f kubernetes/network-policy.yaml
+        kubectl apply -f kubernetes/hpa.yaml
+
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/visit-counter -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+
+    - name: Run integration tests
+      run: |
+        kubectl port-forward service/visit-counter-service 8080:80 -n ${{ env.K8S_NAMESPACE }} &
+        sleep 10
+        
+        # Test all endpoints
+        curl -f http://localhost:8080/health || exit 1
+        curl -f http://localhost:8080/ || exit 1
+        curl -f http://localhost:8080/stats || exit 1
+        curl -f http://localhost:8080/metrics || exit 1
+        
+        echo "✅ All endpoints responding correctly"

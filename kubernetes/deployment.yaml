@@ -19,8 +19,8 @@ spec:
     spec:
       containers:
       - name: visit-counter
-        image: visit-counter:1.0  # This will be replaced in CI/CD
-        imagePullPolicy: IfNotPresent
+        image: visit-counter:latest  # This will be replaced in CI/CD
+        imagePullPolicy: Never
         ports:
         - containerPort: 3000
           protocol: TCP

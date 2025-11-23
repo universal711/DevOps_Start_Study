@@ -5,8 +5,9 @@ metadata:
   namespace: visit-counter
   labels:
     app: visit-counter
+    version: "1.0"
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: visit-counter
@@ -14,17 +15,21 @@ spec:
     metadata:
       labels:
         app: visit-counter
+        version: "1.0"
     spec:
-      serviceAccountName: visit-counter-sa
       containers:
       - name: visit-counter
-        image: visit-counter:1.0
+        image: visit-counter:1.0  # This will be replaced in CI/CD
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
+          protocol: TCP
         env:
         - name: PORT
-          value: "3000"
+          valueFrom:
+            configMapKeyRef:
+              name: visit-counter-config
+              key: PORT
         - name: NODE_ENV
           valueFrom:
             configMapKeyRef:
@@ -32,20 +37,24 @@ spec:
               key: NODE_ENV
         resources:
           requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
             memory: "128Mi"
             cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 10
+          periodSeconds: 15
         readinessProbe:
           httpGet:
             path: /health
             port: 3000
           initialDelaySeconds: 5
-          periodSeconds: 5
+          periodSeconds: 10
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          allowPrivilegeEscalation: false

@@ -45,7 +45,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      security-events: write 
+      security-events: write
 
     steps:
     - name: Checkout code
@@ -85,7 +85,7 @@ jobs:
   security-scan:
     runs-on: ubuntu-latest
     permissions:
-      security-events: write 
+      security-events: write
       contents: read
     steps:
     - name: Checkout code
@@ -115,22 +115,35 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Minikube
-      uses: manusa/actions-setup-minikube@v2
-      with:
-        minikube version: 'v1.32.0'
-        kubernetes version: 'v1.28.0'
-
-    - name: Build image (for Minikube)
+    - name: Install Minikube and kubectl
       run: |
+        # Install kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+        
+        # Install Minikube
+        curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+        sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+    - name: Start Minikube cluster
+      run: |
+        # Start Minikube with Docker driver
+        minikube start --driver=docker --force
+        minikube status
+        
+        # Configure Docker to use Minikube's Docker daemon
         eval $(minikube docker-env)
+
+    - name: Build Docker image in Minikube
+      run: |
         docker build -t ${{ env.IMAGE_NAME }}:latest .
 
     - name: Deploy to Kubernetes
       run: |
-        # Update deployment with latest image
+        # Update deployment to use latest image
         sed -i 's|visit-counter:1.0|visit-counter:latest|g' kubernetes/deployment.yaml
         
+        # Apply all Kubernetes manifests
         kubectl apply -f kubernetes/namespace.yaml
         kubectl apply -f kubernetes/configmap.yaml
         kubectl apply -f kubernetes/secret.yaml
@@ -142,13 +155,39 @@ jobs:
 
     - name: Verify deployment
       run: |
+        # Wait for deployment to be ready
         kubectl rollout status deployment/visit-counter -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+        
+        # Show all resources
         kubectl get all -n ${{ env.K8S_NAMESPACE }}
+        
+        # Show pod details
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
 
     - name: Run smoke tests
       run: |
+        # Start port-forward in background
         kubectl port-forward service/visit-counter-service 8080:80 -n ${{ env.K8S_NAMESPACE }} &
+        PORT_FORWARD_PID=$!
+        
+        # Wait for port-forward to be ready
         sleep 10
+        
+        # Test all endpoints
+        echo "Testing health endpoint..."
         curl -f http://localhost:8080/health || exit 1
+        
+        echo "Testing main endpoint..."
         curl -f http://localhost:8080/ || exit 1
+        
+        echo "Testing stats endpoint..."
+        curl -f http://localhost:8080/stats || exit 1
+        
+        echo "✅ All smoke tests passed!"
+        
+        # Stop port-forward
+        kill $PORT_FORWARD_PID
 
+    - name: Get Minikube service URL (for reference)
+      run: |
+        minikube service list -n ${{ env.K8S_NAMESPACE }}

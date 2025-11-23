@@ -2,5 +2,3 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: visit-counter
-  labels:
-    name: visit-counter

@@ -3,15 +3,13 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: visit-counter-hpa
   namespace: visit-counter
-  labels:
-    app: visit-counter
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: visit-counter
-  minReplicas: 2
-  maxReplicas: 10
+  minReplicas: 1
+  maxReplicas: 3
   metrics:
   - type: Resource
     resource:
@@ -19,16 +17,3 @@ spec:
       target:
         type: Utilization
         averageUtilization: 50
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 70
-  behavior:
-    scaleDown:
-      stabilizationWindowSeconds: 60
-      policies:
-      - type: Percent
-        value: 50
-        periodSeconds: 30

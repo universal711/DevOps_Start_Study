@@ -1,0 +1,193 @@
+name: CI/CD for Visit Counter
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  IMAGE_NAME: visit-counter
+  REGISTRY: ghcr.io
+  K8S_NAMESPACE: visit-counter
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: app/package-lock.json
+
+    - name: Install dependencies
+      run: |
+        cd app
+        npm ci
+
+    - name: Run basic tests
+      run: |
+        cd app
+        npm start &
+        sleep 5
+        curl -f http://localhost:3000/health || exit 1
+        curl -f http://localhost:3000/ || exit 1
+        kill %1
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=sha,prefix={{branch}}-
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+        wait-for-processing: true
+
+  deploy-to-minikube:
+    needs: [test, build-and-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Minikube and kubectl
+      run: |
+        # Install kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+        
+        # Install Minikube
+        curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+        sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+    - name: Start Minikube cluster
+      run: |
+        # Start Minikube with Docker driver
+        minikube start --driver=docker --force
+        minikube status
+        
+        # Configure Docker to use Minikube's Docker daemon
+        eval $(minikube docker-env)
+
+    - name: Build Docker image in Minikube
+      run: |
+        docker build -t ${{ env.IMAGE_NAME }}:latest .
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Update deployment to use latest image
+        sed -i 's|visit-counter:1.0|visit-counter:latest|g' kubernetes/deployment.yaml
+        
+        # Apply all Kubernetes manifests
+        kubectl apply -f kubernetes/namespace.yaml
+        kubectl apply -f kubernetes/configmap.yaml
+        kubectl apply -f kubernetes/secret.yaml
+        kubectl apply -f kubernetes/service-account.yaml
+        kubectl apply -f kubernetes/deployment.yaml
+        kubectl apply -f kubernetes/service.yaml
+        kubectl apply -f kubernetes/network-policy.yaml
+        kubectl apply -f kubernetes/hpa.yaml
+
+    - name: Verify deployment
+      run: |
+        # Wait for deployment to be ready
+        kubectl rollout status deployment/visit-counter -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+        
+        # Show all resources
+        kubectl get all -n ${{ env.K8S_NAMESPACE }}
+        
+        # Show pod details
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
+
+    - name: Run smoke tests
+      run: |
+        # Start port-forward in background
+        kubectl port-forward service/visit-counter-service 8080:80 -n ${{ env.K8S_NAMESPACE }} &
+        PORT_FORWARD_PID=$!
+        
+        # Wait for port-forward to be ready
+        sleep 10
+        
+        # Test all endpoints
+        echo "Testing health endpoint..."
+        curl -f http://localhost:8080/health || exit 1
+        
+        echo "Testing main endpoint..."
+        curl -f http://localhost:8080/ || exit 1
+        
+        echo "Testing stats endpoint..."
+        curl -f http://localhost:8080/stats || exit 1
+        
+        echo "✅ All smoke tests passed!"
+        
+        # Stop port-forward
+        kill $PORT_FORWARD_PID
+
+    - name: Get Minikube service URL (for reference)
+      run: |
+        minikube service list -n ${{ env.K8S_NAMESPACE }}
